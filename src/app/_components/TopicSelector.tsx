@@ -61,6 +61,11 @@ export function TopicSelector({
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {topics.length === 0 && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No topics available.
+          </p>
+        )}
         {topics.map((topic) => (
           <button
             key={topic}
@@ -89,7 +94,7 @@ export function TopicSelector({
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={3}
+                      strokeWidth={2}
                       d="M5 13l4 4L19 7"
                     />
                   </svg>

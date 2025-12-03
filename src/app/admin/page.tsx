@@ -1,15 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "~/trpc/react";
 import { useAuth } from "~/hooks/useAuth";
+
+interface ImportedQuestion {
+  topic: string;
+  type: "multiple_choice" | "true_false" | "open_ended";
+  question: string;
+  options?: string[];
+  correctAnswerIndex?: number;
+  correctAnswer?: boolean;
+  suggestedAnswer?: string;
+}
 
 export default function AdminPage() {
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const utils = api.useUtils();
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportedQuestion[] | null>(
+    null,
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: topics = [] } = api.quiz.getTopics.useQuery();
 
@@ -52,6 +68,25 @@ export default function AdminPage() {
   const deleteMutation = api.quiz.deleteQuestion.useMutation({
     onSuccess: () => {
       void utils.quiz.getAllQuestions.invalidate();
+    },
+  });
+
+  const bulkCreateMutation = api.quiz.bulkCreateQuestions.useMutation({
+    onSuccess: (data) => {
+      void utils.quiz.getAllQuestions.invalidate();
+      void utils.quiz.getTopics.invalidate();
+      setImportPreview(null);
+      setShowImportForm(false);
+      const topicMsg =
+        data.newTopics > 0
+          ? ` and created ${data.newTopics} new topic${data.newTopics !== 1 ? "s" : ""}`
+          : "";
+      alert(
+        `Successfully imported ${data.count} question${data.count !== 1 ? "s" : ""}${topicMsg}!`,
+      );
+    },
+    onError: (error) => {
+      setImportError(error.message);
     },
   });
 
@@ -131,6 +166,120 @@ export default function AdminPage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportPreview(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string) as unknown;
+
+        // Validate the JSON structure
+        let questionsArray: ImportedQuestion[];
+
+        if (Array.isArray(json)) {
+          questionsArray = json as ImportedQuestion[];
+        } else if (
+          typeof json === "object" &&
+          json !== null &&
+          "questions" in json &&
+          Array.isArray((json as { questions: unknown }).questions)
+        ) {
+          questionsArray = (json as { questions: ImportedQuestion[] })
+            .questions;
+        } else {
+          throw new Error(
+            "Invalid JSON format. Expected an array of questions or an object with a 'questions' array.",
+          );
+        }
+
+        // Validate each question
+        const validatedQuestions: ImportedQuestion[] = [];
+        const errors: string[] = [];
+
+        questionsArray.forEach((q, index) => {
+          if (!q.topic || !q.type || !q.question) {
+            errors.push(
+              `Question ${index + 1}: Missing required fields (topic, type, or question)`,
+            );
+            return;
+          }
+
+          if (
+            !["multiple_choice", "true_false", "open_ended"].includes(q.type)
+          ) {
+            errors.push(`Question ${index + 1}: Invalid type "${q.type}"`);
+            return;
+          }
+
+          if (q.type === "multiple_choice") {
+            if (
+              !q.options ||
+              !Array.isArray(q.options) ||
+              q.options.length < 2
+            ) {
+              errors.push(
+                `Question ${index + 1}: Multiple choice questions need at least 2 options`,
+              );
+              return;
+            }
+            if (
+              typeof q.correctAnswerIndex !== "number" ||
+              q.correctAnswerIndex < 0 ||
+              q.correctAnswerIndex >= q.options.length
+            ) {
+              errors.push(`Question ${index + 1}: Invalid correctAnswerIndex`);
+              return;
+            }
+          }
+
+          if (q.type === "true_false" && typeof q.correctAnswer !== "boolean") {
+            errors.push(
+              `Question ${index + 1}: True/false questions need a boolean correctAnswer`,
+            );
+            return;
+          }
+
+          validatedQuestions.push(q);
+        });
+
+        if (errors.length > 0) {
+          setImportError(errors.join("\n"));
+        }
+
+        if (validatedQuestions.length > 0) {
+          setImportPreview(validatedQuestions);
+        }
+      } catch (err) {
+        setImportError(
+          err instanceof Error ? err.message : "Failed to parse JSON file",
+        );
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = () => {
+    if (!user || !importPreview) return;
+    bulkCreateMutation.mutate({
+      questions: importPreview,
+      userId: user.id,
+    });
+  };
+
+  const clearImport = () => {
+    setImportPreview(null);
+    setImportError(null);
+    setShowImportForm(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -162,19 +311,155 @@ export default function AdminPage() {
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
           Admin Dashboard
         </h1>
-        <button
-          onClick={() => {
-            setShowAddForm(!showAddForm);
-            if (editingId) {
-              resetForm();
-              setEditingId(null);
-            }
-          }}
-          className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-        >
-          {showAddForm ? "Cancel" : "Add Question"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setShowImportForm(!showImportForm);
+              if (!showImportForm) {
+                setShowAddForm(false);
+                setEditingId(null);
+                resetForm();
+              } else {
+                clearImport();
+              }
+            }}
+            className="rounded-lg border border-indigo-600 px-4 py-2 font-medium text-indigo-600 hover:bg-indigo-50 dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-950"
+          >
+            {showImportForm ? "Cancel Import" : "Import JSON"}
+          </button>
+          <button
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              if (!showAddForm) {
+                setShowImportForm(false);
+                clearImport();
+              }
+              if (editingId) {
+                resetForm();
+                setEditingId(null);
+              }
+            }}
+            className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+          >
+            {showAddForm ? "Cancel" : "Add Question"}
+          </button>
+        </div>
       </div>
+
+      {/* JSON Import Form */}
+      {showImportForm && (
+        <div className="mb-8 rounded-xl bg-white p-6 shadow-sm dark:bg-gray-800 dark:shadow-gray-900/50">
+          <h2 className="mb-4 text-xl font-semibold text-gray-900 dark:text-gray-100">
+            Import Questions from JSON
+          </h2>
+
+          <div className="mb-4">
+            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
+              Upload a JSON file with an array of questions or an object with a
+              &quot;questions&quot; array.
+            </p>
+            <details className="mb-4">
+              <summary className="cursor-pointer text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+                View JSON format example
+              </summary>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-100 p-4 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                {`[
+  {
+    "topic": "Topic Name",
+    "type": "multiple_choice",
+    "question": "What is the question?",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswerIndex": 0
+  },
+  {
+    "topic": "Topic Name",
+    "type": "true_false",
+    "question": "Is this statement true?",
+    "correctAnswer": true
+  },
+  {
+    "topic": "Topic Name",
+    "type": "open_ended",
+    "question": "Explain this concept.",
+    "suggestedAnswer": "Optional suggested answer"
+  }
+]`}
+              </pre>
+            </details>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileChange}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100 dark:text-gray-400 dark:file:bg-indigo-900/50 dark:file:text-indigo-300 dark:hover:file:bg-indigo-900"
+            />
+          </div>
+
+          {importError && (
+            <div className="mb-4 rounded-lg bg-red-50 p-4 dark:bg-red-900/20">
+              <p className="text-sm font-medium text-red-800 dark:text-red-300">
+                Validation Errors:
+              </p>
+              <pre className="mt-1 text-sm whitespace-pre-wrap text-red-700 dark:text-red-400">
+                {importError}
+              </pre>
+            </div>
+          )}
+
+          {importPreview && (
+            <div>
+              <div className="mb-4 rounded-lg bg-green-50 p-4 dark:bg-green-900/20">
+                <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                  ✓ {importPreview.length} question
+                  {importPreview.length !== 1 ? "s" : ""} ready to import
+                </p>
+              </div>
+
+              <div className="mb-4 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                {importPreview.map((q, index) => (
+                  <div
+                    key={index}
+                    className="border-b border-gray-200 p-3 last:border-b-0 dark:border-gray-700"
+                  >
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                        {q.topic}
+                      </span>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                        {q.type.replace("_", " ")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {q.question}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={clearImport}
+                  className="rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={bulkCreateMutation.isPending}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                >
+                  {bulkCreateMutation.isPending
+                    ? "Importing..."
+                    : `Import ${importPreview.length} Question${importPreview.length !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       {showAddForm && (

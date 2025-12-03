@@ -15,7 +15,7 @@ interface JwtPayload {
 }
 
 function getJwtSecret(): string {
-  return env.JWT_SECRET as string;
+  return env.JWT_SECRET;
 }
 
 export const quizRouter = createTRPCRouter({
@@ -220,6 +220,69 @@ export const quizRouter = createTRPCRouter({
 
       await ctx.db.delete(questions).where(eq(questions.id, input.id));
       return { success: true };
+    }),
+
+  // Bulk create questions from JSON (admin only)
+  bulkCreateQuestions: publicProcedure
+    .input(
+      z.object({
+        questions: z.array(
+          z.object({
+            topic: z.string(),
+            type: z.enum(["multiple_choice", "true_false", "open_ended"]),
+            question: z.string().min(1),
+            options: z.array(z.string()).optional(),
+            correctAnswerIndex: z.number().optional(),
+            correctAnswer: z.boolean().optional(),
+            suggestedAnswer: z.string().optional(),
+          }),
+        ),
+        userId: z.number(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if user is admin
+      const user = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
+
+      if (user[0]?.role !== "admin") {
+        throw new Error("Unauthorized: Admin role required");
+      }
+
+      // Extract unique topics from imported questions
+      const uniqueTopics = [...new Set(input.questions.map((q) => q.topic))];
+
+      // Get existing topics
+      const existingTopics = await ctx.db
+        .select({ name: topics.name })
+        .from(topics);
+      const existingTopicNames = new Set(existingTopics.map((t) => t.name));
+
+      // Create missing topics
+      const newTopics = uniqueTopics.filter((t) => !existingTopicNames.has(t));
+      if (newTopics.length > 0) {
+        await ctx.db.insert(topics).values(newTopics.map((name) => ({ name })));
+      }
+
+      // Insert questions
+      const questionsToInsert = input.questions.map((q) => ({
+        ...q,
+        createdById: input.userId,
+      }));
+
+      const result = await ctx.db
+        .insert(questions)
+        .values(questionsToInsert)
+        .returning();
+
+      return {
+        success: true,
+        count: result.length,
+        newTopics: newTopics.length,
+      };
     }),
 
   // Submit quiz attempt
