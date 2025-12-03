@@ -1,53 +1,130 @@
+"use client";
+
 import Link from "next/link";
+import { api } from "~/trpc/react";
+import { useAuth } from "~/hooks/useAuth";
+import { StatsCard } from "./_components/StatsCard";
 
-import { LatestPost } from "~/app/_components/post";
-import { api, HydrateClient } from "~/trpc/server";
+export default function HomePage() {
+  const { user, visitorId, isLoading: authLoading } = useAuth();
 
-export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
+  const { data: stats, isLoading: statsLoading } = api.quiz.getStats.useQuery(
+    { visitorId: visitorId || undefined, userId: user?.id },
+    { enabled: !authLoading && (!!visitorId || !!user) },
+  );
 
-  void api.post.getLatest.prefetch();
+  const { data: questionCount } = api.quiz.getAllQuestions.useQuery();
+  const { data: topics = [] } = api.quiz.getTopics.useQuery();
 
   return (
-    <HydrateClient>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-        <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-          <h1 className="text-5xl font-extrabold tracking-tight sm:text-[5rem]">
-            Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-          </h1>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/usage/first-steps"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">First Steps →</h3>
-              <div className="text-lg">
-                Just the basics - Everything you need to know to set up your
-                database and authentication.
-              </div>
-            </Link>
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/introduction"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">Documentation →</h3>
-              <div className="text-lg">
-                Learn more about Create T3 App, the libraries it uses, and how
-                to deploy it.
-              </div>
-            </Link>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-2xl text-white">
-              {hello ? hello.greeting : "Loading tRPC query..."}
-            </p>
-          </div>
-
-          <LatestPost />
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      {/* Hero Section */}
+      <div className="mb-12 text-center">
+        <h1 className="mb-4 text-4xl font-bold text-gray-900 sm:text-5xl dark:text-white">
+          Test Your{" "}
+          <span className="text-indigo-600 dark:text-indigo-400">
+            AI Knowledge
+          </span>
+        </h1>
+        <p className="mx-auto max-w-2xl text-lg text-gray-600 dark:text-gray-400">
+          Practice and master key concepts in Artificial Intelligence, from
+          search algorithms to probabilistic reasoning.
+        </p>
+        <div className="mt-8 flex justify-center gap-4">
+          <Link
+            href="/quiz"
+            className="rounded-lg bg-indigo-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-indigo-700"
+          >
+            Start Quiz
+          </Link>
+          <Link
+            href="/history"
+            className="rounded-lg border border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            View History
+          </Link>
         </div>
-      </main>
-    </HydrateClient>
+      </div>
+
+      {/* Stats Section */}
+      <div className="mb-12 grid gap-6 md:grid-cols-2">
+        {!statsLoading && stats && <StatsCard stats={stats} />}
+
+        <div className="rounded-xl bg-white p-6 shadow-sm dark:bg-gray-800">
+          <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
+            Quick Stats
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-700">
+              <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                {questionCount?.length ?? 0}
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Questions Available
+              </p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-700">
+              <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                {topics.length}
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Topics to Study
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Topics Grid */}
+      <div className="mb-8">
+        <h2 className="mb-6 text-2xl font-bold text-gray-800 dark:text-white">
+          Available Topics
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {topics.map((topic) => (
+            <Link
+              key={topic}
+              href={`/quiz?topics=${encodeURIComponent(topic)}`}
+              className="group dark:hover:bg-gray-750 rounded-xl bg-white p-6 shadow-sm transition hover:shadow-md dark:bg-gray-800"
+            >
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white dark:bg-indigo-900 dark:text-indigo-400">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-800 transition group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+                {topic}
+              </h3>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* CTA Section */}
+      <div className="rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 p-8 text-center text-white shadow-xl">
+        <h2 className="mb-2 text-2xl font-bold">
+          Ready to Test Your Knowledge?
+        </h2>
+        <p className="mb-6 opacity-90">
+          Choose your topics and start a customized quiz now.
+        </p>
+        <Link
+          href="/quiz"
+          className="inline-block rounded-lg bg-white px-6 py-3 font-semibold text-indigo-600 transition hover:bg-gray-100"
+        >
+          Start Quiz Now
+        </Link>
+      </div>
+    </div>
   );
 }
