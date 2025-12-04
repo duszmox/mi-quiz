@@ -86,26 +86,30 @@ export const quizRouter = createTRPCRouter({
     .input(
       z.object({
         topics: z.array(z.string()).optional(),
-        limit: z.number().min(1).max(50).default(10),
+        limit: z.number().min(1).max(500).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
       if (input.topics && input.topics.length > 0) {
-        const result = await ctx.db
+        const query = ctx.db
           .select()
           .from(questions)
           .where(inArray(questions.topic, input.topics))
-          .orderBy(sql`RANDOM()`)
-          .limit(input.limit);
-        return result;
+          .orderBy(sql`RANDOM()`);
+        if (input.limit) {
+          return query.limit(input.limit);
+        }
+        return query;
       }
 
-      const result = await ctx.db
+      const query = ctx.db
         .select()
         .from(questions)
-        .orderBy(sql`RANDOM()`)
-        .limit(input.limit);
-      return result;
+        .orderBy(sql`RANDOM()`);
+      if (input.limit) {
+        return query.limit(input.limit);
+      }
+      return query;
     }),
 
   // Get all questions (for admin)
