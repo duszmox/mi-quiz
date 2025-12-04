@@ -40,7 +40,7 @@ function QuizContent() {
   } = api.quiz.getQuestions.useQuery(
     {
       topics: selectedTopics.length > 0 ? selectedTopics : undefined,
-      limit: questionLimit,
+      limit: questionLimit === 0 ? undefined : questionLimit,
     },
     { enabled: quizStarted },
   );
@@ -205,6 +205,7 @@ function QuizContent() {
               <option value={20}>20 questions</option>
               <option value={30}>30 questions</option>
               <option value={50}>50 questions</option>
+              <option value={0}>All questions</option>
             </select>
           </div>
 
