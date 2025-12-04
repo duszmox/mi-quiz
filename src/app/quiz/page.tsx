@@ -42,7 +42,12 @@ function QuizContent() {
       topics: selectedTopics.length > 0 ? selectedTopics : undefined,
       limit: questionLimit === 0 ? undefined : questionLimit,
     },
-    { enabled: quizStarted },
+    {
+      enabled: quizStarted,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: Infinity,
+    },
   );
 
   const submitAttemptMutation = api.quiz.submitQuizAttempt.useMutation();
