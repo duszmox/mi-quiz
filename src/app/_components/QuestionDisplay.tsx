@@ -16,6 +16,11 @@ interface QuestionDisplayProps {
   totalQuestions: number;
   onAnswer: (answer: string | number | boolean, isCorrect: boolean) => void;
   showResult?: boolean;
+  existingAnswer?: {
+    questionId: number;
+    userAnswer: string | number | boolean;
+    isCorrect: boolean;
+  };
 }
 
 export function QuestionDisplay({
@@ -23,11 +28,12 @@ export function QuestionDisplay({
   questionNumber,
   totalQuestions,
   onAnswer,
+  existingAnswer,
 }: QuestionDisplayProps) {
   const [selectedAnswer, setSelectedAnswer] = useState<
     string | number | boolean | null
-  >(null);
-  const [hasAnswered, setHasAnswered] = useState(false);
+  >(existingAnswer?.userAnswer ?? null);
+  const [hasAnswered, setHasAnswered] = useState(!!existingAnswer);
 
   const handleAnswer = (answer: string | number | boolean) => {
     if (hasAnswered) return;

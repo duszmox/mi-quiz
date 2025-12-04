@@ -71,6 +71,12 @@ function QuizContent() {
     const currentQuestion = questions?.[currentQuestionIndex];
     if (!currentQuestion) return;
 
+    // Check if already answered this question
+    const alreadyAnswered = answers.some(
+      (a) => a.questionId === currentQuestion.id,
+    );
+    if (alreadyAnswered) return;
+
     const newAnswers = [
       ...answers,
       {
@@ -80,29 +86,6 @@ function QuizContent() {
       },
     ];
     setAnswers(newAnswers);
-
-    // Move to next question after a delay
-    setTimeout(() => {
-      if (currentQuestionIndex < (questions?.length ?? 0) - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      } else {
-        // Quiz completed
-        const correctCount = newAnswers.filter((a) => a.isCorrect).length;
-        const percentage = Math.round((correctCount / newAnswers.length) * 100);
-
-        submitAttemptMutation.mutate({
-          visitorId: visitorId || undefined,
-          userId: user?.id,
-          topics: selectedTopics,
-          totalQuestions: newAnswers.length,
-          correctAnswers: correctCount,
-          percentage,
-          answers: newAnswers,
-        });
-
-        setQuizCompleted(true);
-      }
-    }, 1500);
   };
 
   const resetQuiz = () => {
@@ -143,6 +126,30 @@ function QuizContent() {
     const currentQuestion = questions[currentQuestionIndex];
     if (!currentQuestion) return null;
 
+    const existingAnswer = answers.find(
+      (a) => a.questionId === currentQuestion.id,
+    );
+    const canGoBack = currentQuestionIndex > 0;
+    const canGoForward = currentQuestionIndex < questions.length - 1;
+    const allAnswered = answers.length === questions.length;
+
+    const handleFinishQuiz = () => {
+      const correctCount = answers.filter((a) => a.isCorrect).length;
+      const percentage = Math.round((correctCount / answers.length) * 100);
+
+      submitAttemptMutation.mutate({
+        visitorId: visitorId || undefined,
+        userId: user?.id,
+        topics: selectedTopics,
+        totalQuestions: answers.length,
+        correctAnswers: correctCount,
+        percentage,
+        answers: answers,
+      });
+
+      setQuizCompleted(true);
+    };
+
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         <QuestionDisplay
@@ -150,8 +157,61 @@ function QuizContent() {
           questionNumber={currentQuestionIndex + 1}
           totalQuestions={questions.length}
           onAnswer={handleAnswer}
+          existingAnswer={existingAnswer}
           key={currentQuestion.id}
         />
+
+        {/* Navigation buttons */}
+        <div className="mt-6 flex items-center justify-between">
+          <button
+            onClick={() => setCurrentQuestionIndex(currentQuestionIndex - 1)}
+            disabled={!canGoBack}
+            className="flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Back
+          </button>
+
+          {allAnswered && (
+            <button
+              onClick={handleFinishQuiz}
+              className="rounded-lg bg-green-600 px-6 py-2 font-medium text-white transition hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+            >
+              Finish Quiz
+            </button>
+          )}
+
+          <button
+            onClick={() => setCurrentQuestionIndex(currentQuestionIndex + 1)}
+            disabled={!canGoForward}
+            className="flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            Forward
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     );
   }
