@@ -1,6 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+
+// Fisher-Yates shuffle with seed for consistent shuffling per question
+function shuffleWithMapping<T>(array: T[]): { shuffled: T[]; indexMap: number[] } {
+  const shuffled = [...array];
+  const indexMap = array.map((_, i) => i);
+  
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    [indexMap[i], indexMap[j]] = [indexMap[j]!, indexMap[i]!];
+  }
+  
+  return { shuffled, indexMap };
+}
 
 interface QuestionDisplayProps {
   question: {
@@ -30,6 +44,23 @@ export function QuestionDisplay({
   onAnswer,
   existingAnswer,
 }: QuestionDisplayProps) {
+  // Shuffle options for multiple choice questions
+  const { shuffledOptions, shuffledCorrectIndex, originalIndexMap } = useMemo(() => {
+    if (question.type !== "multiple_choice" || !question.options) {
+      return { shuffledOptions: null, shuffledCorrectIndex: null, originalIndexMap: null };
+    }
+    
+    const { shuffled, indexMap } = shuffleWithMapping(question.options);
+    // Find where the original correct answer ended up after shuffling
+    const newCorrectIndex = indexMap.indexOf(question.correctAnswerIndex ?? 0);
+    
+    return { 
+      shuffledOptions: shuffled, 
+      shuffledCorrectIndex: newCorrectIndex,
+      originalIndexMap: indexMap
+    };
+  }, [question.id, question.type, question.options, question.correctAnswerIndex]);
+
   const [selectedAnswer, setSelectedAnswer] = useState<
     string | number | boolean | null
   >(existingAnswer?.userAnswer ?? null);
@@ -43,7 +74,8 @@ export function QuestionDisplay({
 
     let isCorrect = false;
     if (question.type === "multiple_choice") {
-      isCorrect = answer === question.correctAnswerIndex;
+      // Compare against shuffled correct index
+      isCorrect = answer === shuffledCorrectIndex;
     } else if (question.type === "true_false") {
       isCorrect = answer === question.correctAnswer;
     } else {
@@ -61,11 +93,11 @@ export function QuestionDisplay({
       return `${baseClass} border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-600 dark:hover:border-indigo-500 dark:hover:bg-indigo-900/30`;
     }
 
-    if (index === question.correctAnswerIndex) {
+    if (index === shuffledCorrectIndex) {
       return `${baseClass} border-green-500 bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400`;
     }
 
-    if (index === selectedAnswer && index !== question.correctAnswerIndex) {
+    if (index === selectedAnswer && index !== shuffledCorrectIndex) {
       return `${baseClass} border-red-500 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400`;
     }
 
@@ -120,9 +152,9 @@ export function QuestionDisplay({
 
       {/* Answers */}
       <div className="space-y-3">
-        {question.type === "multiple_choice" && question.options && (
+        {question.type === "multiple_choice" && shuffledOptions && (
           <>
-            {question.options.map((option, index) => (
+            {shuffledOptions.map((option, index) => (
               <button
                 key={index}
                 onClick={() => handleAnswer(index)}
@@ -184,25 +216,24 @@ export function QuestionDisplay({
       {hasAnswered && question.type !== "open_ended" && (
         <div
           className={`rounded-lg p-4 ${
-            selectedAnswer === question.correctAnswerIndex ||
+            selectedAnswer === shuffledCorrectIndex ||
             selectedAnswer === question.correctAnswer
               ? "bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-400"
               : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-400"
           }`}
         >
-          {selectedAnswer === question.correctAnswerIndex ||
+          {selectedAnswer === shuffledCorrectIndex ||
           selectedAnswer === question.correctAnswer ? (
             <p className="font-medium">✓ Correct!</p>
           ) : (
             <p className="font-medium">
               ✗ Incorrect.{" "}
               {question.type === "multiple_choice" &&
-                question.options &&
-                question.correctAnswerIndex !== null &&
-                question.correctAnswerIndex !== undefined && (
+                shuffledOptions &&
+                shuffledCorrectIndex !== null && (
                   <span>
                     The correct answer is:{" "}
-                    {question.options[question.correctAnswerIndex]}
+                    {shuffledOptions[shuffledCorrectIndex]}
                   </span>
                 )}
               {question.type === "true_false" && (
